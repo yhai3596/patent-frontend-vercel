@@ -1,6 +1,7 @@
 import { DOUBAO_CONFIG, AI_PROMPTS, DOMAIN_KEYWORDS } from '@/constants';
 import type { AIParseResult, TechnicalDomain } from '@/types';
 import type { AIError } from './ai/types';
+import { aiConfigApi } from './api';
 
 // 重新导出AI错误类型，确保类型统一
 export type { AIError, AIErrorType } from './ai/types';
@@ -8,11 +9,18 @@ export type { AIError, AIErrorType } from './ai/types';
 class AIService {
   private apiKey: string;
   private baseURL: string;
+  private useBackendAPI: boolean;
 
   constructor() {
     // 从localStorage获取API Key
     this.apiKey = localStorage.getItem('doubao_api_key') || '';
     this.baseURL = DOUBAO_CONFIG.baseURL;
+    this.useBackendAPI = true; // 默认使用后端API
+  }
+  
+  // 设置是否使用后端API
+  setUseBackendAPI(use: boolean): void {
+    this.useBackendAPI = use;
   }
 
   // 设置API Key
@@ -268,6 +276,18 @@ class AIService {
 
   // AI润色
   async polishContent(content: string, sectionName: string): Promise<string> {
+    // 如果使用后端API
+    if (this.useBackendAPI) {
+      try {
+        const response = await aiConfigApi.polish(content, sectionName);
+        return response.data.polishedContent || content;
+      } catch (error: any) {
+        console.error('后端AI润色失败:', error);
+        // 如果后端失败，尝试本地调用
+      }
+    }
+    
+    // 本地调用豆包AI
     try {
       const response = await this.request('/chat/completions', {
         model: DOUBAO_CONFIG.models.chat,
