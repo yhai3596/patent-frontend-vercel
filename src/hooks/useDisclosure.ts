@@ -1,6 +1,6 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import type { Disclosure, DisclosureContent, DisclosureStatus, ChapterCompleteness } from '@/types';
-import { disclosureStorage } from '@/utils/storage';
+import { disclosureApi } from '@/services/api';
 import { DISCLOSURE_CHAPTERS } from '@/constants';
 
 interface UseDisclosureReturn {
@@ -13,13 +13,15 @@ interface UseDisclosureReturn {
     review: number;
     approved: number;
   };
-  loadDisclosures: (authorId?: string) => void;
-  loadDisclosureById: (id: string) => void;
-  createDisclosure: (type: Disclosure['type'], authorId: string, authorName: string) => Disclosure;
-  updateDisclosure: (id: string, updates: Partial<Disclosure>) => void;
-  updateContent: (id: string, content: Partial<DisclosureContent>) => void;
-  deleteDisclosure: (id: string) => void;
-  changeStatus: (id: string, status: DisclosureStatus) => void;
+  loading: boolean;
+  error: string | null;
+  loadDisclosures: () => Promise<void>;
+  loadDisclosureById: (id: string) => Promise<void>;
+  createDisclosure: (type: Disclosure['type'], authorId: string, authorName: string) => Promise<Disclosure>;
+  updateDisclosure: (id: string, updates: Partial<Disclosure>) => Promise<void>;
+  updateContent: (id: string, content: Partial<DisclosureContent>) => Promise<void>;
+  deleteDisclosure: (id: string) => Promise<void>;
+  changeStatus: (id: string, status: DisclosureStatus) => Promise<void>;
   calculateCompleteness: (disclosure: Disclosure) => ChapterCompleteness[];
   calculateQualityScore: (disclosure: Disclosure) => number;
 }
@@ -27,6 +29,8 @@ interface UseDisclosureReturn {
 export function useDisclosure(): UseDisclosureReturn {
   const [disclosures, setDisclosures] = useState<Disclosure[]>([]);
   const [currentDisclosure, setCurrentDisclosure] = useState<Disclosure | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const [stats, setStats] = useState({
     total: 0,
     draft: 0,
@@ -36,94 +40,149 @@ export function useDisclosure(): UseDisclosureReturn {
   });
 
   // 加载交底书列表
-  const loadDisclosures = useCallback((authorId?: string) => {
-    const data = authorId 
-      ? disclosureStorage.getByAuthor(authorId)
-      : disclosureStorage.getAll();
-    setDisclosures(data);
-    setStats(disclosureStorage.getStats(authorId));
+  const loadDisclosures = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const response = await disclosureApi.getList();
+      const list = response.data.list || [];
+      setDisclosures(list);
+      
+      // 计算统计
+      const newStats = {
+        total: list.length,
+        draft: list.filter((d: Disclosure) => d.status === 'draft').length,
+        processing: list.filter((d: Disclosure) => d.status === 'processing').length,
+        review: list.filter((d: Disclosure) => d.status === 'review').length,
+        approved: list.filter((d: Disclosure) => d.status === 'approved').length
+      };
+      setStats(newStats);
+    } catch (err: any) {
+      setError(err.message || '加载失败');
+      console.error('加载交底书列表失败:', err);
+    } finally {
+      setLoading(false);
+    }
   }, []);
 
   // 根据ID加载单个交底书
-  const loadDisclosureById = useCallback((id: string) => {
-    const disclosure = disclosureStorage.getById(id);
-    setCurrentDisclosure(disclosure || null);
+  const loadDisclosureById = useCallback(async (id: string) => {
+    setLoading(true);
+    setError(null);
+    try {
+      const response = await disclosureApi.getById(id);
+      setCurrentDisclosure(response.data);
+    } catch (err: any) {
+      setError(err.message || '加载失败');
+      console.error('加载交底书详情失败:', err);
+    } finally {
+      setLoading(false);
+    }
   }, []);
 
   // 创建新交底书
-  const createDisclosure = useCallback((type: Disclosure['type'], authorId: string, authorName: string) => {
-    const newDisclosure: Omit<Disclosure, 'id' | 'createdAt' | 'updatedAt'> = {
-      type,
-      status: 'draft',
-      authorId,
-      authorName,
-      content: {
-        title: '',
-        technicalField: '',
-        backgroundArt: '',
-        inventionContent: '',
-        technicalSolution: '',
-        beneficialEffects: '',
-        figureDescription: '',
-        implementation: '',
-        claimsSuggestion: ''
-      },
-      attachments: [],
-      qualityScore: 0,
-      completeness: []
-    };
-    
-    const created = disclosureStorage.create(newDisclosure);
-    setDisclosures(prev => [created, ...prev]);
-    setCurrentDisclosure(created);
-    return created;
+  const createDisclosure = useCallback(async (type: Disclosure['type'], authorId: string, authorName: string) => {
+    setLoading(true);
+    setError(null);
+    try {
+      const response = await disclosureApi.create({
+        type,
+        content: {
+          title: '',
+          technicalField: '',
+          backgroundArt: '',
+          inventionContent: '',
+          technicalSolution: '',
+          beneficialEffects: '',
+          figureDescription: '',
+          implementation: '',
+          claimsSuggestion: ''
+        }
+      });
+      const created = response.data;
+      setDisclosures(prev => [created, ...prev]);
+      setCurrentDisclosure(created);
+      return created;
+    } catch (err: any) {
+      setError(err.message || '创建失败');
+      console.error('创建交底书失败:', err);
+      throw err;
+    } finally {
+      setLoading(false);
+    }
   }, []);
 
   // 更新交底书
-  const updateDisclosure = useCallback((id: string, updates: Partial<Disclosure>) => {
-    const updated = disclosureStorage.update(id, updates);
-    if (updated) {
+  const updateDisclosure = useCallback(async (id: string, updates: Partial<Disclosure>) => {
+    setLoading(true);
+    setError(null);
+    try {
+      const response = await disclosureApi.update(id, updates);
+      const updated = response.data;
       setDisclosures(prev => 
         prev.map(d => d.id === id ? updated : d)
       );
       if (currentDisclosure?.id === id) {
         setCurrentDisclosure(updated);
       }
+    } catch (err: any) {
+      setError(err.message || '更新失败');
+      console.error('更新交底书失败:', err);
+      throw err;
+    } finally {
+      setLoading(false);
     }
   }, [currentDisclosure]);
 
   // 更新内容
-  const updateContent = useCallback((id: string, content: Partial<DisclosureContent>) => {
-    const disclosure = disclosureStorage.getById(id);
-    if (!disclosure) return;
+  const updateContent = useCallback(async (id: string, content: Partial<DisclosureContent>) => {
+    setLoading(true);
+    setError(null);
+    try {
+      const disclosure = disclosures.find(d => d.id === id);
+      if (!disclosure) return;
 
-    const updatedContent = { ...disclosure.content, ...content };
-    const updated = disclosureStorage.update(id, { content: updatedContent });
-    
-    if (updated) {
+      const updatedContent = { ...disclosure.content, ...content };
+      const response = await disclosureApi.update(id, { content: updatedContent });
+      const updated = response.data;
+      
       setDisclosures(prev => 
         prev.map(d => d.id === id ? updated : d)
       );
       if (currentDisclosure?.id === id) {
         setCurrentDisclosure(updated);
       }
+    } catch (err: any) {
+      setError(err.message || '更新内容失败');
+      console.error('更新内容失败:', err);
+      throw err;
+    } finally {
+      setLoading(false);
     }
-  }, [currentDisclosure]);
+  }, [disclosures, currentDisclosure]);
 
   // 删除交底书
-  const deleteDisclosure = useCallback((id: string) => {
-    const success = disclosureStorage.delete(id);
-    if (success) {
+  const deleteDisclosure = useCallback(async (id: string) => {
+    setLoading(true);
+    setError(null);
+    try {
+      await disclosureApi.delete(id);
       setDisclosures(prev => prev.filter(d => d.id !== id));
       if (currentDisclosure?.id === id) {
         setCurrentDisclosure(null);
       }
+    } catch (err: any) {
+      setError(err.message || '删除失败');
+      console.error('删除交底书失败:', err);
+      throw err;
+    } finally {
+      setLoading(false);
     }
   }, [currentDisclosure]);
 
   // 修改状态
-  const changeStatus = useCallback((id: string, status: DisclosureStatus) => {
-    updateDisclosure(id, { status });
+  const changeStatus = useCallback(async (id: string, status: DisclosureStatus) => {
+    await updateDisclosure(id, { status });
   }, [updateDisclosure]);
 
   // 计算章节完整性
@@ -164,6 +223,8 @@ export function useDisclosure(): UseDisclosureReturn {
     disclosures,
     currentDisclosure,
     stats,
+    loading,
+    error,
     loadDisclosures,
     loadDisclosureById,
     createDisclosure,
