@@ -15,7 +15,7 @@ export type {
 // 导出管理器
 export { aiModelManager, DEFAULT_MODELS } from './manager';
 
-// 提示词模板
+// 提示词模板 - 优化版
 export const AI_PROMPTS = {
   imageAnalysis: `请分析这张技术图纸或图片，提取以下信息并以JSON格式返回：
 {
@@ -75,7 +75,8 @@ export const AI_PROMPTS = {
 2. 提取所有能找到的章节内容
 3. 如果某个字段在文档中没有明确对应内容，可以留空
 4. 保持专业术语的准确性
-5. 对于实验数据、表格等内容，用文字描述其关键信息`,
+5. 对于实验数据、表格等内容，用文字描述其关键信息
+6. 如果文档格式混乱，请尽力提取有效信息`,
 
   polishContent: (section: string) => `你是一位资深的专利代理人，擅长撰写技术交底书。
 请对以下"${section}"内容进行润色，要求：
@@ -98,172 +99,69 @@ export const AI_PROMPTS = {
   "score": 质量评分(0-100),
   "missingChapters": ["缺失章节"],
   "suggestions": ["改进建议"]
+}`,
+
+  // 新增：PDF内容提取专用提示词
+  extractPDFContent: `你是一位专业的专利文档解析专家。请仔细阅读用户上传的PDF文档，提取其中的技术交底书内容。
+
+【提取要求】
+1. 识别文档中的所有章节标题
+2. 提取每个章节的完整内容
+3. 保持原文的专业术语和表述
+4. 对于表格数据，用文字描述其关键信息
+
+【输出格式】
+{
+  "isPatentDocument": true/false,
+  "documentType": "技术交底书/专利申请书/其他",
+  "extractedData": {
+    "title": "发明名称",
+    "technicalField": "技术领域",
+    "backgroundArt": "背景技术",
+    "inventionContent": "发明内容",
+    "technicalSolution": "技术方案",
+    "beneficialEffects": "有益效果",
+    "figureDescription": "附图说明",
+    "implementation": "具体实施方式",
+    "claimsSuggestion": "权利要求建议"
+  },
+  "confidence": 0.8,
+  "missingInfo": [],
+  "suggestions": []
+}
+
+【重要提示】
+- 如果文档是技术交底书或专利相关文档，isPatentDocument必须设为true
+- 即使提取内容不完整，只要有技术相关内容，也应设为true
+- confidence根据内容完整度评分，0.5以上表示成功提取`,
+
+  // 新增：内容质量检查提示词
+  qualityCheck: (content: string) => `请检查以下技术交底书内容的质量：
+
+${content}
+
+【检查维度】
+1. 完整性：各章节是否都有内容
+2. 准确性：技术描述是否清晰准确
+3. 规范性：是否符合专利撰写规范
+4. 逻辑性：内容是否逻辑通顺
+
+【输出格式】
+{
+  "score": 0-100的质量评分,
+  "issues": ["发现的问题"],
+  "suggestions": ["改进建议"]
 }`
 };
 
-// 错误提示辅助函数 - 接受任何包含type/message/suggestion的对象
-export function getErrorAlert(error: { type: string; message: string; suggestion: string } | null | undefined): {
-  title: string;
-  description: string;
-  variant: 'destructive' | 'default' | 'warning';
-} {
-  if (!error) {
-    return {
-      title: 'AI服务异常',
-      description: '发生未知错误，请稍后重试',
-      variant: 'destructive'
-    };
-  }
-  
-  switch (error.type as import('./types').AIErrorType) {
-    case 'UNCONFIGURED':
-      return {
-        title: 'AI功能未配置',
-        description: error.suggestion,
-        variant: 'warning'
-      };
-    case 'INVALID_KEY':
-      return {
-        title: 'API Key无效',
-        description: error.suggestion,
-        variant: 'destructive'
-      };
-    case 'NO_QUOTA':
-      return {
-        title: 'API额度不足',
-        description: error.suggestion,
-        variant: 'warning'
-      };
-    case 'MODEL_NOT_FOUND':
-      return {
-        title: 'AI模型暂不可用',
-        description: error.suggestion,
-        variant: 'destructive'
-      };
-    case 'RATE_LIMIT':
-      return {
-        title: '请求过于频繁',
-        description: error.suggestion,
-        variant: 'warning'
-      };
-    case 'NETWORK_ERROR':
-      return {
-        title: '网络连接失败',
-        description: error.suggestion,
-        variant: 'destructive'
-      };
-    case 'TIMEOUT':
-      return {
-        title: '请求超时',
-        description: error.suggestion,
-        variant: 'warning'
-      };
-    case 'CONTENT_FILTER':
-      return {
-        title: '内容被拦截',
-        description: error.suggestion,
-        variant: 'warning'
-      };
-    case 'FILE_TOO_LARGE':
-      return {
-        title: '文件过大',
-        description: error.suggestion,
-        variant: 'warning'
-      };
-    case 'FILE_UNSUPPORTED':
-      return {
-        title: '格式不支持',
-        description: error.suggestion,
-        variant: 'warning'
-      };
-    case 'ALL_FAILED':
-      return {
-        title: '所有AI模型都不可用',
-        description: error.suggestion,
-        variant: 'destructive'
-      };
-    default:
-      return {
-        title: 'AI服务异常',
-        description: error.suggestion,
-        variant: 'destructive'
-      };
-  }
-}
-
-// 兼容层：模拟旧的aiService接口（延迟加载以避免循环依赖）
-export const aiService = {
-  isConfigured: () => {
-    const { aiModelManager } = require('./manager');
-    return aiModelManager.hasAvailableModel();
-  },
-  
-  setApiKey: (apiKey: string) => {
-    const { aiModelManager } = require('./manager');
-    const doubaoModels = aiModelManager.getAllModels().filter((m: any) => m.provider === 'doubao');
-    if (doubaoModels.length > 0) {
-      aiModelManager.updateModel(doubaoModels[0].modelId, { apiKey, enabled: true });
-    }
-  },
-  
-  analyzeImage: (imageBase64: string, prompt?: string) => {
-    const { aiModelManager } = require('./manager');
-    return aiModelManager.analyzeImage(imageBase64, prompt);
-  },
-  
-  analyzeDocument: (fileId: string, prompt?: string) => {
-    const { aiModelManager } = require('./manager');
-    return aiModelManager.analyzeDocument(fileId, prompt);
-  },
-  
-  uploadFile: (file: File) => {
-    const { aiModelManager } = require('./manager');
-    return aiModelManager.uploadFile(file);
-  },
-  
-  extractFromPDFBase64: (base64Data: string, filename: string) => {
-    const { aiModelManager } = require('./manager');
-    return aiModelManager.extractFromPDFBase64(base64Data, filename);
-  },
-  
-  polishContent: (content: string, sectionName: string) => {
-    const { aiModelManager } = require('./manager');
-    return aiModelManager.polishContent(content, sectionName);
-  },
-  
-  checkCompleteness: (disclosureData: any) => {
-    const { aiModelManager } = require('./manager');
-    return aiModelManager.checkCompleteness(disclosureData);
-  },
-  
-  detectDomain: (content: string) => {
-    // 简单的领域检测
-    const keywords: Record<string, string[]> = {
-      mechanical: ['部件', '装配', '结构', '连接', '机械', '装置', '零件', '组件', '机构'],
-      material: ['配方', '成分', '比例', '工艺', '材料', '制备', '合成', '添加剂', '树脂'],
-      software: ['算法', '流程', '步骤', '模块', '程序', '软件', '方法', '系统', '模型', '网络'],
-      electronic: ['电路', '信号', '控制', '传感器', '电气', '电压', '电流', '芯片', '模块']
-    };
-    
-    const scores: Record<string, number> = { mechanical: 0, material: 0, software: 0, electronic: 0, other: 0 };
-    
-    for (const [domain, words] of Object.entries(keywords)) {
-      for (const word of words) {
-        if (content.includes(word)) {
-          scores[domain]++;
-        }
-      }
-    }
-    
-    let maxDomain = 'other';
-    let maxScore = 0;
-    for (const [domain, score] of Object.entries(scores)) {
-      if (score > maxScore) {
-        maxScore = score;
-        maxDomain = domain;
-      }
-    }
-    
-    return maxDomain as import('@/types').TechnicalDomain;
+// 导出默认模型配置
+export const DEFAULT_AI_CONFIG = {
+  doubao: {
+    provider: 'doubao' as const,
+    name: '豆包',
+    modelId: 'doubao-seed-1-6-lite-251015',
+    baseURL: 'https://ark.cn-beijing.volces.com/api/v3',
+    temperature: 0.3,
+    maxTokens: 65535
   }
 };
