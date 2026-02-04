@@ -341,7 +341,7 @@ class AIService {
     try {
       console.log('开始提取PDF内容，fileId:', fileId);
       
-      // 使用chat completions API，更稳定
+      // 使用chat completions API，使用file_url格式引用已上传的文件
       const response = await this.request('/chat/completions', {
         model: DOUBAO_CONFIG.models.document,
         messages: [
@@ -355,7 +355,7 @@ class AIService {
               {
                 type: 'file',
                 file_url: {
-                  url: `https://ark.cn-beijing.volces.com/api/v3/files/${fileId}/content`
+                  url: fileId  // 豆包API使用file_id直接引用
                 }
               },
               {
@@ -366,11 +366,13 @@ class AIService {
           }
         ],
         temperature: 0.3,
-        max_tokens: 4000
-      });
+        max_tokens: 65535,  // 增加token限制以处理长文档
+        reasoning_effort: 'medium'  // 使用中等推理努力程度
+      }, 180000);  // 增加超时到180秒
 
       const content = response.choices?.[0]?.message?.content || '';
-      console.log('AI返回的原始内容:', content);
+      console.log('AI返回的原始内容长度:', content.length);
+      console.log('AI返回的原始内容前500字:', content.substring(0, 500));
       
       const result = this.parseExtractionResponse(content);
       console.log('解析后的结果:', result);
