@@ -52,7 +52,9 @@ const DisclosureEdit: React.FC = () => {
     createDisclosure,
     updateDisclosure,
     calculateCompleteness,
-    calculateQualityScore
+    calculateQualityScore,
+    loading,
+    error: disclosureError
   } = useDisclosure();
 
   const [content, setContent] = useState<DisclosureContent>({
@@ -346,8 +348,33 @@ const DisclosureEdit: React.FC = () => {
   if (!currentDisclosure) {
     return (
       <Layout>
-        <div className="flex items-center justify-center h-64">
-          <Loader2 className="w-8 h-8 animate-spin" />
+        <div className="flex flex-col items-center justify-center h-64 space-y-4">
+          {loading ? (
+            <>
+              <Loader2 className="w-8 h-8 animate-spin" />
+              <p className="text-gray-500">加载中...</p>
+            </>
+          ) : disclosureError ? (
+            <>
+              <AlertCircle className="w-12 h-12 text-red-500" />
+              <div className="text-center">
+                <p className="text-red-600 font-medium">加载失败</p>
+                <p className="text-gray-500 text-sm mt-1">{disclosureError}</p>
+                <Button 
+                  variant="outline" 
+                  className="mt-4"
+                  onClick={() => id ? loadDisclosureById(id) : window.location.reload()}
+                >
+                  重试
+                </Button>
+              </div>
+            </>
+          ) : (
+            <>
+              <AlertCircle className="w-12 h-12 text-yellow-500" />
+              <p className="text-gray-500">请稍候...</p>
+            </>
+          )}
         </div>
       </Layout>
     );
