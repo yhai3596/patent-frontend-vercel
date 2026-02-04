@@ -133,7 +133,7 @@ export class DoubaoAdapter extends BaseAdapter {
       const fileId = await this.uploadFile(file);
       console.log(`[${this.name}] 文件上传成功，fileId:`, fileId);
       
-      // 使用chat completions API提取内容
+      // 使用chat completions API提取内容 - 使用file_url格式引用文件
       const response = await this.request('/chat/completions', {
         model: this.config.modelId,
         messages: [
@@ -143,15 +143,27 @@ export class DoubaoAdapter extends BaseAdapter {
           },
           {
             role: 'user',
-            content: `${AI_PROMPTS.extractFromAttachment}\n\nPDF文件ID: ${fileId}`
+            content: [
+              {
+                type: 'file',
+                file_url: {
+                  url: fileId  // 豆包API使用file_id直接引用
+                }
+              },
+              {
+                type: 'text',
+                text: AI_PROMPTS.extractFromAttachment
+              }
+            ]
           }
         ],
         temperature: this.config.temperature || 0.3,
-        max_tokens: this.config.maxTokens || 4000
-      }, 120000);
+        max_tokens: 65535  // 使用更大的token限制以处理长文档
+      }, 180000);  // 增加超时到180秒
 
       const content = response.choices[0]?.message?.content || '';
       console.log(`[${this.name}] AI返回内容长度:`, content.length);
+      console.log(`[${this.name}] AI返回内容前500字:`, content.substring(0, 500));
       
       const result = this.parseExtractionResponse(content);
       return { ...result, provider: this.provider };
