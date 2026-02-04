@@ -99,8 +99,13 @@ const DisclosureEdit: React.FC = () => {
     } else {
       // 新建交底书
       if (user) {
-        const newDisclosure = createDisclosure('发明专利', user.id, user.name);
-        navigate(`/disclosure/edit/${newDisclosure.id}`);
+        createDisclosure('发明专利', user.id, user.name)
+          .then(newDisclosure => {
+            navigate(`/disclosure/edit/${newDisclosure.id}`);
+          })
+          .catch(err => {
+            console.error('创建交底书失败:', err);
+          });
       }
     }
   }, [id, user]);
