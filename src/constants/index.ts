@@ -249,7 +249,7 @@ export const DOUBAO_CONFIG = {
   baseURL: 'https://ark.cn-beijing.volces.com/api/v3',
   models: {
     vision: 'doubao-1-5-vision-pro-32k-250115',
-    document: 'doubao-seed-1-6-251015',
+    document: 'doubao-seed-1-6-lite-251015',  // 使用用户提供的模型ID
     chat: 'doubao-1-5-pro-32k-250115'
   }
 } as const;
