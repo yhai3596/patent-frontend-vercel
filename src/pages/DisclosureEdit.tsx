@@ -93,6 +93,9 @@ const DisclosureEdit: React.FC = () => {
   
   // AI错误提示
   const [aiError, setAiError] = useState<import('@/services/ai/types').AIError | null>(null);
+  
+  // 本地错误状态
+  const [initError, setInitError] = useState<string | null>(null);
 
   // 初始化
   useEffect(() => {
@@ -107,6 +110,7 @@ const DisclosureEdit: React.FC = () => {
           })
           .catch(err => {
             console.error('创建交底书失败:', err);
+            setInitError(err.message || '创建交底书失败，请检查网络连接');
           });
       }
     }
@@ -354,19 +358,26 @@ const DisclosureEdit: React.FC = () => {
               <Loader2 className="w-8 h-8 animate-spin" />
               <p className="text-gray-500">加载中...</p>
             </>
-          ) : disclosureError ? (
+          ) : disclosureError || initError ? (
             <>
               <AlertCircle className="w-12 h-12 text-red-500" />
-              <div className="text-center">
+              <div className="text-center max-w-md px-4">
                 <p className="text-red-600 font-medium">加载失败</p>
-                <p className="text-gray-500 text-sm mt-1">{disclosureError}</p>
-                <Button 
-                  variant="outline" 
-                  className="mt-4"
-                  onClick={() => id ? loadDisclosureById(id) : window.location.reload()}
-                >
-                  重试
-                </Button>
+                <p className="text-gray-500 text-sm mt-1">{disclosureError || initError}</p>
+                <div className="flex gap-2 justify-center mt-4">
+                  <Button 
+                    variant="outline" 
+                    onClick={() => id ? loadDisclosureById(id) : window.location.reload()}
+                  >
+                    重试
+                  </Button>
+                  <Button 
+                    variant="ghost"
+                    onClick={() => navigate('/dashboard')}
+                  >
+                    返回工作台
+                  </Button>
+                </div>
               </div>
             </>
           ) : (
